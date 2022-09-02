@@ -35,12 +35,21 @@ const rebuildStackAnimatedValues = (props) => {
 }
 
 class Swiper extends Component {
+  static getDerivedStateFromProps (props, state) {
+    return {
+      ...state,
+      ...calculateCardIndexes(props.cardIndex, props.cards),
+      cards: props.cards,
+    }
+  }
+
   constructor (props) {
     super(props)
 
     this.state = {
       ...calculateCardIndexes(props.cardIndex, props.cards),
       pan: new Animated.ValueXY(),
+      scaleValue: new Animated.Value(0),
       cards: props.cards,
       previousCardX: new Animated.Value(props.previousCardDefaultPositionX),
       previousCardY: new Animated.Value(props.previousCardDefaultPositionY),
@@ -160,7 +169,8 @@ class Swiper extends Component {
     let isSwipingLeft,
       isSwipingRight,
       isSwipingTop,
-      isSwipingBottom
+      isSwipingBottom,
+      newDirection;
 
     if (Math.abs(this._animatedValueX) > Math.abs(this._animatedValueY) && Math.abs(this._animatedValueX) > overlayOpacityHorizontalThreshold) {
       if (this._animatedValueX > 0) isSwipingRight = true
@@ -170,24 +180,30 @@ class Swiper extends Component {
       else isSwipingTop = true
     }
 
-    if (isSwipingRight) {
-      this.setState({ labelType: LABEL_TYPES.RIGHT })
-    } else if (isSwipingLeft) {
-      this.setState({ labelType: LABEL_TYPES.LEFT })
-    } else if (isSwipingTop) {
-      this.setState({ labelType: LABEL_TYPES.TOP })
-    } else if (isSwipingBottom) {
-      this.setState({ labelType: LABEL_TYPES.BOTTOM })
-    } else {
+    // get new direction
+    if (isSwipingLeft) {
+      newDirection = LABEL_TYPES.LEFT;
+    } else if (isSwipingRight) {
+      newDirection = LABEL_TYPES.RIGHT;
+    } else if (isSwipingTop || isSwipingBottom) {
+      const animatedValueX = this._animatedValueX;
+      newDirection = animatedValueX > 0 ? LABEL_TYPES.RIGHT : LABEL_TYPES.LEFT;
+    }
+
+    if (newDirection && newDirection !== this.state.labelType) {
+      this.setState({ labelType: newDirection });
+    } else if (!newDirection) {
       this.setState({ labelType: LABEL_TYPES.NONE })
     }
 
     const { onTapCardDeadZone } = this.props
     if (
-      this._animatedValueX < -onTapCardDeadZone ||
-      this._animatedValueX > onTapCardDeadZone ||
-      this._animatedValueY < -onTapCardDeadZone ||
-      this._animatedValueY > onTapCardDeadZone
+      !this.state.slideGesture && (
+        this._animatedValueX < -onTapCardDeadZone ||
+        this._animatedValueX > onTapCardDeadZone ||
+        this._animatedValueY < -onTapCardDeadZone ||
+        this._animatedValueY > onTapCardDeadZone
+      )
     ) {
       this.setState({
         slideGesture: true
@@ -283,34 +299,10 @@ class Swiper extends Component {
   }
 
   getOnSwipeDirectionCallback = (animatedValueX, animatedValueY) => {
-    const {
-      onSwipedLeft,
-      onSwipedRight,
-      onSwipedTop,
-      onSwipedBottom
-    } = this.props
-
-    const {
-      isSwipingLeft,
-      isSwipingRight,
-      isSwipingTop,
-      isSwipingBottom
-    } = this.getSwipeDirection(animatedValueX, animatedValueY)
-
-    if (isSwipingRight) {
-      return onSwipedRight
-    }
-
-    if (isSwipingLeft) {
-      return onSwipedLeft
-    }
-
-    if (isSwipingTop) {
-      return onSwipedTop
-    }
-
-    if (isSwipingBottom) {
-      return onSwipedBottom
+    if (this.state.labelType === 'left') {
+      return this.props.onSwipedLeft
+    } else if (this.state.labelType === 'right') {
+      return this.props.onSwipedRight
     }
   }
 
@@ -370,7 +362,7 @@ class Swiper extends Component {
   swipeLeft = (mustDecrementCardIndex = false) => {
     this.swipeCard(
       this.props.onSwipedLeft,
-      -this.props.horizontalThreshold,
+      -width / 2,
       0,
       mustDecrementCardIndex
     )
@@ -379,7 +371,7 @@ class Swiper extends Component {
   swipeRight = (mustDecrementCardIndex = false) => {
     this.swipeCard(
       this.props.onSwipedRight,
-      this.props.horizontalThreshold,
+      width / 2,
       0,
       mustDecrementCardIndex
     )
@@ -601,13 +593,14 @@ class Swiper extends Component {
   }
 
   calculateOverlayLabelWrapperStyle = () => {
-    const dynamicStyle = this.props.overlayLabels[this.state.labelType].style
+    const dynamicStyle = this.props.overlayLabels[this.state.labelType].style;
     const dynamicWrapperStyle = dynamicStyle ? dynamicStyle.wrapper : {}
 
     const opacity = this.props.animateOverlayLabelsOpacity
       ? this.interpolateOverlayLabelsOpacity()
       : 1
-    return [this.props.overlayLabelWrapperStyle, dynamicWrapperStyle, { opacity }]
+    const scale = this.props.animateOverlayLabelsScale && this.interpolateOverlayLabelsHorizontalScale()
+    return [this.props.overlayLabelWrapperStyle, dynamicWrapperStyle, { opacity }, { transform: [{ scale }] }]
   }
 
   calculateSwipableCardStyle = () => {
@@ -693,6 +686,26 @@ class Swiper extends Component {
     }
 
     return opacity
+  }
+
+  interpolateOverlayLabelsHorizontalScale = () => {
+    const animatedValueX = this._animatedValueX;
+    const animatedValueY = this._animatedValueY;
+    let scale
+
+    if (animatedValueX > animatedValueY) { // Is swiping right
+      scale = this.state.pan.x.interpolate({
+        inputRange: this.props.inputOverlayLabelsScaleRight,
+        outputRange: this.props.outputOverlayLabelsScaleRight
+      })
+    } else { // Is swiping left
+      scale = this.state.pan.x.interpolate({
+        inputRange: this.props.inputOverlayLabelsScaleLeft,
+        outputRange: this.props.outputOverlayLabelsScaleLeft
+      })
+    }
+
+    return scale
   }
 
   interpolateRotation = () =>
