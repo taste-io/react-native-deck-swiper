@@ -1,5 +1,5 @@
 import React, { Component } from 'react'
-import { PanResponder, Text, View, Dimensions, Animated } from 'react-native'
+import { PanResponder, Text, View, Dimensions, Animated, InteractionManager } from 'react-native'
 import PropTypes from 'prop-types'
 import isEqual from 'lodash/isEqual'
 
@@ -13,7 +13,7 @@ const LABEL_TYPES = {
   TOP: 'top',
   BOTTOM: 'bottom'
 }
-const SWIPE_MULTIPLY_FACTOR = 4.5
+const SWIPE_MULTIPLY_FACTOR = 7
 
 const calculateCardIndexes = (firstCardIndex, cards) => {
   firstCardIndex = firstCardIndex || 0
@@ -49,7 +49,6 @@ class Swiper extends Component {
     this.state = {
       ...calculateCardIndexes(props.cardIndex, props.cards),
       pan: new Animated.ValueXY(),
-      scaleValue: new Animated.Value(0),
       cards: props.cards,
       previousCardX: new Animated.Value(props.previousCardDefaultPositionX),
       previousCardY: new Animated.Value(props.previousCardDefaultPositionY),
@@ -89,11 +88,15 @@ class Swiper extends Component {
     return propsChanged || stateChanged
   }
 
-  componentWillUnmount = () => {
-    this._mounted = false
+  componentWillUnmountAfterInteractions = () => {
     this.state.pan.x.removeAllListeners()
     this.state.pan.y.removeAllListeners()
-    this.dimensionsChangeSubscription.remove()
+    this.dimensionsChangeSubscription?.remove()
+  }
+
+  componentWillUnmount = () => {
+    this._mounted = false;
+    InteractionManager.runAfterInteractions(this.componentWillUnmountAfterInteractions.bind(this));
   }
 
   getCardStyle = () => {
@@ -566,8 +569,13 @@ class Swiper extends Component {
   resetPanAndScale = () => {
     const {previousCardDefaultPositionX, previousCardDefaultPositionY} = this.props
     this.state.pan.setValue({ x: 0, y: 0 })
+    this.state.pan.setOffset({ x: 0, y: 0})
+    this._animatedValueX = 0
+    this._animatedValueY = 0
     this.state.previousCardX.setValue(previousCardDefaultPositionX)
     this.state.previousCardY.setValue(previousCardDefaultPositionY)
+    this.state.pan.x.addListener(value => this._animatedValueX = value.value)
+    this.state.pan.y.addListener(value => this._animatedValueY = value.value)
   }
 
   calculateNextPreviousCardPosition = () => {
@@ -715,10 +723,11 @@ class Swiper extends Component {
     })
 
   render = () => {
-    const { pointerEvents, backgroundColor, marginTop, marginBottom, containerStyle, swipeBackCard } = this.props
+    const { pointerEvents, backgroundColor, marginTop, marginBottom, containerStyle, swipeBackCard, testID } = this.props
     return (
       <View
         pointerEvents={pointerEvents}
+        testID={testID}
         style={[
           styles.container,
           {
@@ -932,6 +941,7 @@ Swiper.propTypes = {
   stackSize: PropTypes.number,
   swipeAnimationDuration: PropTypes.number,
   swipeBackCard: PropTypes.bool,
+  testID: PropTypes.string,
   topCardResetAnimationFriction: PropTypes.number,
   topCardResetAnimationTension: PropTypes.number,
   verticalSwipe: PropTypes.bool,
