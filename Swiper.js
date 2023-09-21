@@ -201,12 +201,10 @@ class Swiper extends Component {
 
     const { onTapCardDeadZone } = this.props
     if (
-      !this.state.slideGesture && (
         this._animatedValueX < -onTapCardDeadZone ||
         this._animatedValueX > onTapCardDeadZone ||
         this._animatedValueY < -onTapCardDeadZone ||
         this._animatedValueY > onTapCardDeadZone
-      )
     ) {
       this.setState({
         slideGesture: true
